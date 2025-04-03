@@ -159,6 +159,22 @@ public class UsersController {
         return ResponseEntity.notFound().build();
     }
 
+    @PostMapping("/register")
+    @Operation(summary = "Đăng ký người dùng với thông tin JSON")
+    public ResponseEntity<?> registerUser(@RequestBody Users user) {
+        // Kiểm tra xem username hoặc email đã tồn tại chưa
+        Optional<Users> existingUser = usersRepository.findByUsernameOrEmail(user.getUsername(), user.getEmail());
+        if (existingUser.isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Tài khoản hoặc email đã tồn tại");
+        }
+        // Lưu người dùng mới (lưu ý mã hóa password nếu cần)
+        Users savedUser = usersRepository.save(user);
+        String token = jwtUtil.generateJwtToken(savedUser.getUsername());
+        return ResponseEntity.ok(new LoginResponse(savedUser, token));
+    }
+
+    // Chỉ có 1 endpoint đăng nhập duy nhất (không được định nghĩa trùng lặp)
     @PostMapping("/login")
     @Operation(summary = "Đăng nhập với tài khoản (username hoặc email) và mật khẩu")
     public ResponseEntity<?> login(@RequestBody LoginDTO loginDTO) {
@@ -175,5 +191,4 @@ public class UsersController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Tài khoản không tồn tại");
         }
     }
-
 }

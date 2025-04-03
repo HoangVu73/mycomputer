@@ -4,6 +4,7 @@ import com.example.my_computer.dto.OrderReportDTO;
 import com.example.my_computer.entity.Order;
 import com.example.my_computer.entity.OrderStatus;
 import com.example.my_computer.entity.ReviewStatus;
+import com.example.my_computer.model.OrderService;
 import com.example.my_computer.repository.OrderRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +30,9 @@ public class OrderController {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private OrderService orderService;  // Khai báo orderService
+
     // Lấy danh sách đơn hàng, nếu có truyền userId thì lọc theo userId, ngược lại trả về tất cả
     @GetMapping
     public List<Order> getAllOrders(@RequestParam(value = "userId", required = false) Integer userId) {
@@ -46,13 +50,18 @@ public class OrderController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Tạo mới một đơn hàng
+    // Tạo mới một đơn hàng (sử dụng orderService để cập nhật tồn kho)
     @PostMapping
-    public Order createOrder(@RequestBody Order order) {
-        if (order.getOrderItems() != null) {
-            order.getOrderItems().forEach(item -> item.setOrder(order));
+    public ResponseEntity<?> createOrder(@RequestBody Order order) {
+        try {
+            if (order.getOrderItems() != null) {
+                order.getOrderItems().forEach(item -> item.setOrder(order));
+            }
+            Order savedOrder = orderService.createOrder(order);
+            return ResponseEntity.ok(savedOrder);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-        return orderRepository.save(order);
     }
 
     // Cập nhật đơn hàng (full update)
@@ -153,7 +162,6 @@ public class OrderController {
     // --- Endpoint lấy số đơn hàng mới trong 24h qua ---
     @GetMapping("/new-orders")
     public ResponseEntity<Integer> getNewOrdersCount() {
-        // Bạn cần cài đặt phương thức countNewOrdersInLast24Hours() trong OrderRepository
         int count = orderRepository.countNewOrdersInLast24Hours();
         return ResponseEntity.ok(count);
     }
@@ -164,14 +172,11 @@ public class OrderController {
         response.setContentType("text/csv");
         response.setHeader("Content-Disposition", "attachment; filename=\"bao_cao.csv\"");
 
-        // Ví dụ: xuất báo cáo theo ngày (bạn có thể chọn loại khác)
         List<OrderReportDTO> report = orderRepository.getDailyReport();
         PrintWriter writer = response.getWriter();
 
-        // Ghi tiêu đề CSV
         writer.println("Period,OrderCount,TotalRevenue");
 
-        // Ghi dữ liệu báo cáo
         for (OrderReportDTO item : report) {
             writer.println(item.getPeriod() + "," + item.getOrderCount() + "," + item.getTotalRevenue());
         }
@@ -186,16 +191,13 @@ public class OrderController {
         response.setContentType("application/pdf");
         response.setHeader("Content-Disposition", "attachment; filename=\"bao_cao.pdf\"");
 
-        // Sử dụng iText 7 để tạo file PDF
         PdfWriter writer = new PdfWriter(response.getOutputStream());
         PdfDocument pdfDoc = new PdfDocument(writer);
         Document document = new Document(pdfDoc);
 
-        // Thêm tiêu đề cho báo cáo
         document.add(new Paragraph("Báo cáo doanh thu - Daily Report").setBold().setFontSize(16));
         document.add(new Paragraph(" "));
 
-        // Lấy dữ liệu báo cáo
         List<OrderReportDTO> report = orderRepository.getDailyReport();
         for (OrderReportDTO item : report) {
             String line = "Period: " + item.getPeriod() +
